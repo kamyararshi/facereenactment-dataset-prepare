@@ -1,0 +1,10 @@
+numpy
+tqdm
+pandas
+matplotlib
+argparse
+opencv-python-headless
+scikit-image
+pytube
+moviepy
+face-alignment

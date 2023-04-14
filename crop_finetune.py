@@ -105,11 +105,11 @@ if __name__ == '__main__':
     # Download the videos
     df['video_url'] = youtube + df['video_id']
     
-    pool = multiprocessing.Pool(processes=len(df))
-    pool.starmap(download_video,
-                 [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
-    pool.close()
-    pool.join()
+    # pool = multiprocessing.Pool(processes=len(df))
+    # pool.starmap(download_video,
+    #              [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
+    # pool.close()
+    # pool.join()
     df.drop(['video_url'], axis=1, inplace=True)
 
     # Initialize Face Detection
