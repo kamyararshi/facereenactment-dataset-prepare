@@ -82,6 +82,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--config_file', default="sadeghi-modi.csv")
     parser.add_argument('--device', default='cuda')
+    parser.add_argument('--multi', default='multi')
 
     args = parser.parse_args()
 
@@ -105,11 +106,18 @@ if __name__ == '__main__':
     # Download the videos
     df['video_url'] = youtube + df['video_id']
     
-    # pool = multiprocessing.Pool(processes=len(df))
-    # pool.starmap(download_video,
-    #              [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
-    # pool.close()
-    # pool.join()
+    if args.multi == 'multi':
+        # Simultaniously
+        pool = multiprocessing.Pool(processes=len(df))
+        pool.starmap(download_video,
+                    [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
+        pool.close()
+        pool.join()
+    else:
+        # One by One
+        for i in tqdm.trange(len(df)):
+            download_video(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path)
+
     df.drop(['video_url'], axis=1, inplace=True)
 
     # Initialize Face Detection
@@ -118,7 +126,7 @@ if __name__ == '__main__':
     # Preprocessing
     for i in tqdm.tqdm(range(len(df))):
         video_id, ts, te, partition, person, num = df.iloc[i]
-        data_path = os.path.join(dl_path, partition, person, video_id)
+        data_path = os.path.join(dl_path, partition, person, video_id+'-'+str(num))
         os.makedirs(data_path, exist_ok=True)
 
         # Cut the video segment defined in the config
@@ -148,7 +156,7 @@ if __name__ == '__main__':
                 except IndexError:
                     print("IndexErr, Probably no face detected")
 
-print("Successfully Done!")
+    print("Successfully Done!")
 
 
 
