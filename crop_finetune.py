@@ -11,6 +11,7 @@ import cv2
 import torch
 from skimage.transform import resize
 from face_alignment import LandmarksType, FaceAlignment
+import pytube
 from pytube import YouTube
 import moviepy.editor as mp
 warnings.filterwarnings("ignore")
@@ -25,8 +26,12 @@ def download_video(url, video_id, person, dl_path, ext='.mp4'):
     filename = f"{person}-{video_id}"
     
     yt = YouTube(url)
-    video = yt.streams.filter(progressive=True, file_extension=file_extension).order_by('resolution').desc().first()
-    video.download(filename=filename+ext, output_path=dl_path)
+    try:
+        #video = yt.streams.filter(progressive=True, file_extension=file_extension).order_by('resolution').desc().first()
+        video = yt.streams.filter(progressive=True, file_extension=file_extension).get_highest_resolution()
+        video.download(filename=filename+ext, output_path=dl_path)
+    except pytube.exceptions.RegexMatchError:
+        print("RegexMatchError: Could not find match for multiple. Skipping this video.")
 
 
 
@@ -75,26 +80,64 @@ def crop_centered_head(frame, bbox):
 
     return head
 
+def trim_row(df):
+    df['diff'] = df['end'] - df['start']
+
+    new_df = []
+    for _, row in df.iterrows():
+        if row['diff'] > 5:
+            num_crops = row['diff'] // 5
+            res = row['diff'] % 5
+
+            for i in range(num_crops):
+                clip_start = row['start'] + i * 5
+                clip_end = min(row['start'] + (i + 1) * 5, row['end'])
+                clip_row = row.copy()
+                clip_row['start'] = clip_start
+                clip_row['end'] = clip_end
+                new_df.append(clip_row)
+
+            clip_row = row.copy()
+            clip_row['start'] = clip_end
+            clip_row['end'] = clip_end + res
+            new_df.append(clip_row)
+
+        else:
+            new_df.append(row)
+
+    new_df = pd.DataFrame(new_df).drop('diff', axis=1)
+    new_df.reset_index(drop=True, inplace=True)
+    
+    return new_df
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
 
-    parser.add_argument('--config_file', default="sadeghi-modi.csv")
-    parser.add_argument('--device', default='cuda')
-    parser.add_argument('--multi', default='multi')
+    parser.add_argument('--path', default="dataset")
+    parser.add_argument('--config_file', default="koushanfar.csv")
+    parser.add_argument('--device', default='cpu')
+    parser.add_argument("--device_ids", default="1", type=lambda x: list(map(int, x.split(','))),
+                        help="Names of the devices comma separated.")
+    parser.add_argument('--extension', default=".mp4")
+    parser.add_argument('--multi', dest="multi", action="store_true", help="Give 'multi' to download using multiprocessing")
+    parser.set_defaults(multi=False)
 
     args = parser.parse_args()
 
     config = args.config_file
     youtube = "https://www.youtube.com/watch?v="
-    dl_path = "dataset"
-    ext = '.mp4'
+    dl_path = args.path
+    ext = args.extension
+    device_ids = args.device_ids
     out_size = (256, 256)
     
+    if not os.path.exists(dl_path):
+        os.mkdir(dl_path)
+    
     if args.device == 'cuda':
-        device = ('cuda' if torch.cuda.is_available() else 'cpu')
-        if device != 'cuda':
+        device = (f'cuda:{device_ids[0]}' if torch.cuda.is_available() else 'cpu')
+        if device != f'cuda:{device_ids[0]}':
             print("Couldn't find a gpu")
     else:
         device = 'cpu'
@@ -106,8 +149,9 @@ if __name__ == '__main__':
     # Download the videos
     df['video_url'] = youtube + df['video_id']
     
-    if args.multi == 'multi':
+    if args.multi:
         # Simultaniously
+        print("STart Downloading...")
         pool = multiprocessing.Pool(processes=len(df))
         pool.starmap(download_video,
                     [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
@@ -115,15 +159,21 @@ if __name__ == '__main__':
         pool.join()
     else:
         # One by One
+        print("STart Downloading...")
         for i in tqdm.trange(len(df)):
             download_video(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path)
 
     df.drop(['video_url'], axis=1, inplace=True)
 
+    # Trim the start and end second
+    df = trim_row(df=df)
+
     # Initialize Face Detection
-    fd = FaceAlignment(LandmarksType._2D, flip_input=False, device=device).face_detector
+    fd = FaceAlignment(LandmarksType.TWO_D, flip_input=False, device=device).face_detector
 
     # Preprocessing
+    print("Preprocessing starts...")
+    pbar = tqdm.tqdm(range(len(df)))
     for i in tqdm.tqdm(range(len(df))):
         video_id, ts, te, partition, person, num = df.iloc[i]
         data_path = os.path.join(dl_path, partition, person, video_id+'-'+str(num))
@@ -154,15 +204,6 @@ if __name__ == '__main__':
                     mp.ImageClip(head).save_frame(frame_path)
                 
                 except IndexError:
-                    print("IndexErr, Probably no face detected")
+                    pbar.write("IndexErr, Probably no face detected")
 
     print("Successfully Done!")
-
-
-
-
-
-        
-    
-    
-
