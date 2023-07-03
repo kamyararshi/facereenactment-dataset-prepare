@@ -16,7 +16,7 @@ from pytube import YouTube
 import moviepy.editor as mp
 warnings.filterwarnings("ignore")
 
-# Run using python3 crop_finetune.py --config_file sadeghi-modi.csv --device cpu
+# Run using CUDA_VISIBLE_DEVICES=0 python3 crop_finetune.py --config_file koushanfar.csv --device cuda --device_ids 0 --download
 
 def download_video(url, video_id, person, dl_path, ext='.mp4'):
     """
@@ -40,6 +40,7 @@ def extract_segment(video_id, person, ts, te, partition, dl_path='.\dataset', ex
     """
     filename = f"{person}-{video_id}"
     # Crop the video
+    assert os.path.exists(os.path.join(dl_path, filename+ext)), "Video does not exist, probably not downloaded"
     video = mp.VideoFileClip(os.path.join(dl_path, filename+ext))
     fps = video.fps
 
@@ -120,7 +121,9 @@ if __name__ == '__main__':
     parser.add_argument("--device_ids", default="1", type=lambda x: list(map(int, x.split(','))),
                         help="Names of the devices comma separated.")
     parser.add_argument('--extension', default=".mp4")
+    parser.add_argument('--download', dest="dl", action="store_true", help="Whether to download")
     parser.add_argument('--multi', dest="multi", action="store_true", help="Give 'multi' to download using multiprocessing")
+    parser.set_defaults(dl=False)
     parser.set_defaults(multi=False)
 
     args = parser.parse_args()
@@ -144,29 +147,34 @@ if __name__ == '__main__':
 
     # Read the config
     df = pd.read_csv(config)
+    # Trim the start and end second
+    df = trim_row(df=df)
+    # Set number for repetative videos
     df["num"] = df.groupby('video_id').cumcount()
 
     # Download the videos
     df['video_url'] = youtube + df['video_id']
     
-    if args.multi:
-        # Simultaniously
-        print("STart Downloading...")
-        pool = multiprocessing.Pool(processes=len(df))
-        pool.starmap(download_video,
-                    [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
-        pool.close()
-        pool.join()
-    else:
-        # One by One
-        print("STart Downloading...")
-        for i in tqdm.trange(len(df)):
-            download_video(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path)
+    if args.dl:
+        try:
+            if args.multi:
+                # Simultaniously
+                print("STart Downloading...")
+                pool = multiprocessing.Pool(processes=len(df))
+                pool.starmap(download_video,
+                            [(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path) for i in range(len(df))])
+                pool.close()
+                pool.join()
+            else:
+                # One by One
+                print("STart Downloading...")
+                for i in tqdm.trange(len(df)):
+                    download_video(df.iloc[i]['video_url'], df.iloc[i]['video_id'], df.iloc[i]['person_id'], dl_path)
+        except Exception as e:
+            print(e)
 
     df.drop(['video_url'], axis=1, inplace=True)
 
-    # Trim the start and end second
-    df = trim_row(df=df)
 
     # Initialize Face Detection
     fd = FaceAlignment(LandmarksType.TWO_D, flip_input=False, device=device).face_detector
