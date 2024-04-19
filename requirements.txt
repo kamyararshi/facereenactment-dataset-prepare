@@ -8,3 +8,4 @@ scikit-image
 pytube
 moviepy
 face-alignment
+pydub
