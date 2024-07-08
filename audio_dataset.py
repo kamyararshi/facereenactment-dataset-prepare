@@ -98,6 +98,8 @@ if __name__ == '__main__':
     parser.add_argument('--extension', default=".wav")
     parser.add_argument('--download', dest="dl", action="store_true", help="Whether to download")
     parser.add_argument('--multi', dest="multi", action="store_true", help="Give 'multi' to download using multiprocessing")
+    parser.add_argument('--trim', action="store_true", help="Give 'multi' to download using multiprocessing")
+    parser.set_defaults(trim=False)
     parser.set_defaults(dl=False)
     parser.set_defaults(multi=False)
 
@@ -116,7 +118,8 @@ if __name__ == '__main__':
     # Read the config
     df = pd.read_csv(config)
     # Trim the start and end second
-    df = trim_row(df=df)
+    if args.trim:
+        df = trim_row(df=df)
     # Set number for repetative videos
     df["num"] = df.groupby('video_id').cumcount()
 
