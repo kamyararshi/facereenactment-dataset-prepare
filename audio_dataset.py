@@ -11,8 +11,10 @@ import cv2
 import torch
 from skimage.transform import resize
 from face_alignment import LandmarksType, FaceAlignment
-import pytube
-from pytube import YouTube
+
+# from pytube import YouTube
+from pytubefix import YouTube
+from pytubefix.cli import on_progress
 from pydub import AudioSegment
 import moviepy.editor as mp
 warnings.filterwarnings("ignore")
@@ -25,12 +27,12 @@ def download_audio_as_wav(url, video_id, person, dl_path):
     """
     filename = f"{person}-{video_id}"
 
-    yt = YouTube(url)
+    yt = YouTube(url, on_progress_callback=on_progress)
     try:
-        audio = yt.streams.filter(only_audio=True, file_extension='mp4').first()
+        audio = yt.streams.filter(only_audio=True, file_extension='mp4')[-1] # last one is the highest kbp and possiblly the english lang
         audio_file_path = audio.download(filename=filename+".mp4", output_path=dl_path)
         audio = AudioSegment.from_file(audio_file_path, format="mp4")
-        audio.export(filename+".wav", format="wav")
+        audio.export(os.path.join(dl_path, filename+".wav"), format="wav")
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
@@ -94,7 +96,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
 
     parser.add_argument('--path', default="dataset_biden/")
-    parser.add_argument('--config_file', default="biden.csv")
+    parser.add_argument('--config', default="biden.csv")
     parser.add_argument('--extension', default=".wav")
     parser.add_argument('--download', dest="dl", action="store_true", help="Whether to download")
     parser.add_argument('--multi', dest="multi", action="store_true", help="Give 'multi' to download using multiprocessing")
@@ -105,7 +107,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    config = args.config_file
+    config = args.config
     youtube = "https://www.youtube.com/watch?v="
     dl_path = args.path
     ext = args.extension
@@ -152,8 +154,10 @@ if __name__ == '__main__':
     # Preprocessing
     print("Preprocessing starts...")
     pbar = tqdm.tqdm(range(len(df)))
-    for i in tqdm.tqdm(range(len(df))):
+    sec=[]
+    for i in pbar:
         video_id, ts, te, partition, person, num = df.iloc[i]
+        sec.append(te-ts)
         data_path = os.path.join(dl_path, partition, person, video_id)
         os.makedirs(data_path, exist_ok=True)
 
@@ -163,4 +167,4 @@ if __name__ == '__main__':
              
         audio_sub.export(os.path.join(data_path, f"{filename}_{num}.wav"), format="wav")
 
-    print("Successfully Done!")
+    print("Successfully Done!", "Total duration length is: ", sum(sec))
